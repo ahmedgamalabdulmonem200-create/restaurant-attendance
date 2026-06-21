@@ -15,8 +15,9 @@ function requireAdmin(req: any, res: any, next: any) {
 }
 
 // GET /api/attendance — قائمة السجلات مع فلاتر اختيارية
+// يدعم: ?date=YYYY-MM-DD أو ?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD أو ?employeeName=...
 router.get("/", async (req, res) => {
-  const { employeeName, date } = req.query as Record<string, string>;
+  const { employeeName, date, fromDate, toDate } = req.query as Record<string, string>;
 
   const conditions: string[] = [];
   const params: any[] = [];
@@ -29,6 +30,14 @@ router.get("/", async (req, res) => {
   if (date) {
     conditions.push(`DATE(timestamp AT TIME ZONE 'UTC') = $${i++}::date`);
     params.push(date);
+  }
+  if (fromDate) {
+    conditions.push(`DATE(timestamp AT TIME ZONE 'UTC') >= $${i++}::date`);
+    params.push(fromDate);
+  }
+  if (toDate) {
+    conditions.push(`DATE(timestamp AT TIME ZONE 'UTC') <= $${i++}::date`);
+    params.push(toDate);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";

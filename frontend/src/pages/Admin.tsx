@@ -26,6 +26,15 @@ interface Summary {
   checkOuts: number;
 }
 
+// أول وآخر يوم في الشهر الحالي كقيم افتراضية لمدى التصدير
+function firstOfMonth() {
+  const d = new Date();
+  return format(new Date(d.getFullYear(), d.getMonth(), 1), "yyyy-MM-dd");
+}
+function today() {
+  return format(new Date(), "yyyy-MM-dd");
+}
+
 function AdminContent() {
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -33,6 +42,9 @@ function AdminContent() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [exportFrom, setExportFrom] = useState(firstOfMonth);
+  const [exportTo, setExportTo]     = useState(today);
+  const [exporting, setExporting]   = useState(false);
   const logout = useAdminLogout();
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
@@ -72,18 +84,37 @@ function AdminContent() {
     fetchSummary();
   };
 
-  const handleExport = () => {
-    const rows = records.map(r => ({
-      "الاسم":   r.employeeName,
-      "النوع":   r.type === "check-in" ? "حضور" : "انصراف",
-      "التاريخ": format(new Date(r.timestamp), "yyyy-MM-dd"),
-      "الوقت":   format(new Date(r.timestamp), "HH:mm"),
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [{ wch: 32 }, { wch: 10 }, { wch: 14 }, { wch: 8 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "الحضور");
-    XLSX.writeFile(wb, search ? `حضور-${search}-${dateStr}.xlsx` : `حضور-${dateStr}.xlsx`);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ fromDate: exportFrom, toDate: exportTo });
+      if (search) params.set("employeeName", search);
+      const res = await fetch(`/api/attendance?${params}`);
+      const data: Record[] = await res.json();
+
+      if (data.length === 0) {
+        alert("لا توجد سجلات في هذا المدى.");
+        return;
+      }
+
+      const rows = data.map(r => ({
+        "الاسم":   r.employeeName,
+        "النوع":   r.type === "check-in" ? "حضور" : "انصراف",
+        "التاريخ": format(new Date(r.timestamp), "yyyy-MM-dd"),
+        "الوقت":   format(new Date(r.timestamp), "HH:mm"),
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [{ wch: 32 }, { wch: 10 }, { wch: 14 }, { wch: 8 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "الحضور");
+      const name = search
+        ? `حضور-${search}-${exportFrom}-إلى-${exportTo}.xlsx`
+        : `حضور-${exportFrom}-إلى-${exportTo}.xlsx`;
+      XLSX.writeFile(wb, name);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const formatTime = (ts: string) =>
@@ -169,14 +200,44 @@ function AdminContent() {
               className="w-full border border-gray-200 rounded-xl px-4 py-2 pr-9 text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+        </div>
+
+        {/* قسم تصدير Excel بمدى تاريخ */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">من تاريخ</label>
+            <input
+              type="date"
+              value={exportFrom}
+              max={exportTo}
+              onChange={e => setExportFrom(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">إلى تاريخ</label>
+            <input
+              type="date"
+              value={exportTo}
+              min={exportFrom}
+              max={today()}
+              onChange={e => setExportTo(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
           <button
             onClick={handleExport}
-            disabled={records.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl transition-colors shrink-0"
+            disabled={exporting || !exportFrom || !exportTo}
+            className="flex items-center gap-2 px-5 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl transition-colors"
           >
             <FileDown className="h-4 w-4" />
-            تصدير Excel
+            {exporting ? "جارٍ التصدير..." : "تصدير Excel"}
           </button>
+          {search && (
+            <span className="text-xs text-gray-400 self-center">
+              مفلتر بـ: {search}
+            </span>
+          )}
         </div>
 
         {/* Records table */}
