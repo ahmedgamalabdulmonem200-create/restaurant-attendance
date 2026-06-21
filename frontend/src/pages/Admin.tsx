@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback } from "react";
 import { format, subDays, addDays } from "date-fns";
 import {
   Users, ArrowRightCircle, ArrowLeftCircle, MapPin, Trash2,
-  Search, ChevronLeft, ChevronRight, LogOut, Image as ImageIcon
+  Search, ChevronLeft, ChevronRight, LogOut, Image as ImageIcon,
+  FileDown
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { AdminGate, useAdminLogout } from "../components/AdminGate";
 
 const TOKEN_KEY = "admin_token";
@@ -68,6 +70,20 @@ function AdminContent() {
     await fetch(`/api/attendance/${id}`, { method: "DELETE", headers: authHeaders });
     fetchRecords();
     fetchSummary();
+  };
+
+  const handleExport = () => {
+    const rows = records.map(r => ({
+      "الاسم":   r.employeeName,
+      "النوع":   r.type === "check-in" ? "حضور" : "انصراف",
+      "التاريخ": format(new Date(r.timestamp), "yyyy-MM-dd"),
+      "الوقت":   format(new Date(r.timestamp), "HH:mm"),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 32 }, { wch: 10 }, { wch: 14 }, { wch: 8 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "الحضور");
+    XLSX.writeFile(wb, search ? `حضور-${search}-${dateStr}.xlsx` : `حضور-${dateStr}.xlsx`);
   };
 
   const formatTime = (ts: string) =>
@@ -153,6 +169,14 @@ function AdminContent() {
               className="w-full border border-gray-200 rounded-xl px-4 py-2 pr-9 text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          <button
+            onClick={handleExport}
+            disabled={records.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl transition-colors shrink-0"
+          >
+            <FileDown className="h-4 w-4" />
+            تصدير Excel
+          </button>
         </div>
 
         {/* Records table */}
